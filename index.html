@@ -945,6 +945,35 @@ main { flex: 1; }
 }
 
 </style>
+
+  <!-- ===== AUTO-UPDATE CONFIG ===== -->
+  <!-- Paste your YouTube Data API v3 key below to enable auto-updating sub count + latest videos.
+       Get one free: https://console.cloud.google.com/apis/credentials  (enable "YouTube Data API v3")
+       Then restrict it to: API = YouTube Data API v3, HTTP referrers = your domain(s).
+       Leaving it empty just falls back to the hardcoded numbers/videos below — totally fine. -->
+  <script>
+    window.MAREGIRL_CONFIG = {
+      YT_API_KEY: "AIzaSyAiBIIm8ySqxKmrlNxPxGtN4_SAHcAcN1Q",            // <-- paste key here
+      YT_HANDLE:  "MareGirl_sehr" // your @handle (no @)
+    };
+  </script>
+
+  <!-- ===== VERCEL WEB ANALYTICS =====
+       Tracks real pageviews + visitor counts. After you deploy to Vercel, enable
+       "Web Analytics" in the project dashboard. Loaded only on real (non-local) hosts
+       so localhost previews don't 404. Zero cookies. -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    (function () {
+      var h = location.hostname;
+      var isProd = h.endsWith(".vercel.app") || (h.indexOf(".") > 0 && !h.endsWith(".local") && h !== "localhost" && h !== "127.0.0.1" && h.indexOf("claudeusercontent") === -1 && h.indexOf("usercontent") === -1);
+      if (!isProd) return;
+      var s = document.createElement("script");
+      s.defer = true;
+      s.src = "/_vercel/insights/script.js";
+      document.head.appendChild(s);
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>
@@ -968,6 +997,119 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef, useMemo } = React;
+
+// ===================== YOUTUBE LIVE DATA =====================
+// Fetches channel stats + latest uploads from YouTube Data API v3.
+// Caches results in localStorage for 1 hour to stay well under quota.
+// If no API key is set, returns null and the UI falls back to hardcoded values.
+const YT_CACHE_KEY = "maregirl_yt_cache_v2";
+const YT_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const SHORT_DURATION_SEC = 60; // YouTube treats <=60s vertical uploads as Shorts
+
+// Parses ISO-8601 duration like "PT1M30S" → seconds
+const parseISODuration = (s) => {
+  if (!s) return 0;
+  const m = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
+};
+
+const fetchYouTubeData = async () => {
+  const cfg = window.MAREGIRL_CONFIG || {};
+  if (!cfg.YT_API_KEY) return null;
+  const key = cfg.YT_API_KEY;
+  const handle = (cfg.YT_HANDLE || "").replace(/^@/, "");
+  if (!handle) return null;
+
+  // 1. Channel: stats + uploads playlist id
+  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&forHandle=@${handle}&key=${key}`);
+  if (!chRes.ok) throw new Error("channel fetch failed");
+  const chData = await chRes.json();
+  const channel = chData.items && chData.items[0];
+  if (!channel) throw new Error("channel not found");
+  const uploadsId = channel.contentDetails.relatedPlaylists.uploads;
+
+  // 2. All uploads (up to 50 — plenty of headroom; bump if she ever passes 50)
+  const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsId}&maxResults=50&key=${key}`);
+  if (!plRes.ok) throw new Error("playlist fetch failed");
+  const plData = await plRes.json();
+
+  const items = plData.items || [];
+  const ids = items.map(it => it.contentDetails.videoId);
+
+  // 3. Duration per video — to split shorts from long-form (one batch call, 50 IDs max)
+  const durations = {};
+  if (ids.length) {
+    const vRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids.join(",")}&key=${key}`);
+    if (vRes.ok) {
+      const vData = await vRes.json();
+      for (const v of (vData.items || [])) {
+        durations[v.id] = parseISODuration(v.contentDetails.duration);
+      }
+    }
+  }
+
+  const now = Date.now();
+  const all = items.map((it) => {
+    const vid = it.contentDetails.videoId;
+    const publishedAt = new Date(it.contentDetails.videoPublishedAt || it.snippet.publishedAt);
+    const days = Math.max(0, Math.floor((now - publishedAt.getTime()) / 86400000));
+    return {
+      id: "yt_" + vid,
+      ytId: vid,
+      title: it.snippet.title,
+      days,
+      tag: "Star Equestrian",
+      real: true,
+      durationSec: durations[vid] || null,
+    };
+  });
+
+  // Unknown duration (rare) defaults to long-form so the videos page never silently hides one
+  const longForm = all.filter(v => v.durationSec === null || v.durationSec > SHORT_DURATION_SEC);
+  const shorts = all.filter(v => v.durationSec !== null && v.durationSec <= SHORT_DURATION_SEC);
+
+  return {
+    fetchedAt: now,
+    subs: parseInt(channel.statistics.subscriberCount || "0", 10),
+    videoCount: longForm.length,
+    shortCount: shorts.length,
+    viewCount: parseInt(channel.statistics.viewCount || "0", 10),
+    videos: longForm,
+    shorts,
+  };
+};
+
+const useYouTubeChannel = () => {
+  const [data, setData] = useState(() => {
+    try {
+      const raw = localStorage.getItem(YT_CACHE_KEY);
+      if (!raw) return null;
+      const cached = JSON.parse(raw);
+      if (Date.now() - cached.fetchedAt < YT_CACHE_TTL) return cached;
+    } catch {}
+    return null;
+  });
+
+  useEffect(() => {
+    if (data && Date.now() - data.fetchedAt < YT_CACHE_TTL) return;
+    fetchYouTubeData()
+      .then(fresh => {
+        if (!fresh) return;
+        setData(fresh);
+        try { localStorage.setItem(YT_CACHE_KEY, JSON.stringify(fresh)); } catch {}
+      })
+      .catch(err => console.warn("[YouTube] live data unavailable, using fallback:", err.message));
+  }, []);
+
+  return data;
+};
+
+const formatCount = (n) => {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(n >= 10_000 ? 0 : 1) + "K";
+  return String(n);
+};
 
 // ===================== ADMIN GATE =====================
 // Visit ?admin=1 to unlock posting. Saved to localStorage thereafter.
@@ -1219,6 +1361,7 @@ const SHORTS = [
 ];
 
 const VIDEOS = [
+  { id: "v0", ytId: "SZUuKZcGVTI", title: "Newest upload ✿", days: 0, tag: "Star Equestrian", real: true },
   { id: "v1", ytId: "dmjJi35YKU8", title: "Latest upload from the ranch", days: 3, tag: "Star Equestrian", real: true },
   { id: "v2", ytId: "lTqXgFFfoio", title: "More from Evervale", days: 9, tag: "Star Equestrian", real: true },
   { id: "v3", ytId: "bStS2Ctgfbk", title: "Another adventure in Heartside", days: 18, tag: "Star Equestrian", real: true },
@@ -1636,6 +1779,28 @@ const NewPostForm = ({ onClose, onSave }) => {
   );
 };
 
+// ===================== HERO STATS (live from YouTube) =====================
+
+const HeroStats = () => {
+  const yt = useYouTubeChannel();
+  const subs = yt ? formatCount(yt.subs) : "28";
+  const videoCount = yt ? yt.videoCount : 7;
+  const shortCount = yt ? yt.shortCount : 7;
+  return (
+    <div className="hero-stats">
+      <div><strong>{subs}</strong><span>subscribers</span></div>
+      <div><strong>{videoCount}</strong><span>videos</span></div>
+      <div><strong>{shortCount}</strong><span>shorts</span></div>
+    </div>
+  );
+};
+
+const RecentVideosTeaser = () => {
+  const yt = useYouTubeChannel();
+  const list = (yt && yt.videos && yt.videos.length) ? yt.videos : VIDEOS;
+  return list.slice(0, 3).map(v => <VideoCard key={v.id} video={v} compact />);
+};
+
 // ===================== HOME =====================
 
 const Home = ({ onNav, likes, onLike, posts, onRead, images, setImages, admin }) => {
@@ -1654,11 +1819,7 @@ const Home = ({ onNav, likes, onLike, posts, onRead, images, setImages, admin })
             <button className="btn btn-brown" onClick={() => onNav("blog")}>Read the blog</button>
             <button className="btn btn-outline" onClick={() => onNav("videos")}>Watch videos →</button>
           </div>
-          <div className="hero-stats">
-            <div><strong>28</strong><span>subscribers</span></div>
-            <div><strong>7</strong><span>videos</span></div>
-            <div><strong>7</strong><span>shorts</span></div>
-          </div>
+          <HeroStats />
         </div>
         <div className="hero-art">
           <div className="hero-card hero-card-1">
@@ -1718,7 +1879,7 @@ const Home = ({ onNav, likes, onLike, posts, onRead, images, setImages, admin })
           <button className="link-btn" onClick={() => onNav("videos")}>all videos →</button>
         </div>
         <div className="grid grid-3">
-          {VIDEOS.slice(0, 3).map(v => <VideoCard key={v.id} video={v} compact />)}
+          <RecentVideosTeaser />
         </div>
       </section>
 
@@ -1855,8 +2016,17 @@ const VideoCard = ({ video, compact, onPlay }) => {
 const Videos = () => {
   const [tag, setTag] = useState("All");
   const [playing, setPlaying] = useState(null);
-  const tags = ["All", ...Array.from(new Set(VIDEOS.map(v => v.tag)))];
-  const list = tag === "All" ? VIDEOS : VIDEOS.filter(v => v.tag === tag);
+  const yt = useYouTubeChannel();
+  // Merge: live videos take precedence; fall back to hardcoded VIDEOS if API isn't configured.
+  const allVideos = useMemo(() => {
+    if (yt && yt.videos && yt.videos.length) {
+      const seen = new Set(yt.videos.map(v => v.ytId));
+      return [...yt.videos, ...VIDEOS.filter(v => !seen.has(v.ytId))];
+    }
+    return VIDEOS;
+  }, [yt]);
+  const tags = ["All", ...Array.from(new Set(allVideos.map(v => v.tag)))];
+  const list = tag === "All" ? allVideos : allVideos.filter(v => v.tag === tag);
 
   return (
     <div className="page">
@@ -1897,18 +2067,18 @@ const Videos = () => {
             </div>
           ) : (
             <React.Fragment>
-              {VIDEOS[0].ytId ? (
-                <img src={`https://img.youtube.com/vi/${VIDEOS[0].ytId}/hqdefault.jpg`} alt={VIDEOS[0].title} className="video-feature-img" />
+              {allVideos[0].ytId ? (
+                <img src={`https://img.youtube.com/vi/${allVideos[0].ytId}/hqdefault.jpg`} alt={allVideos[0].title} className="video-feature-img" />
               ) : (
                 <Placeholder label="pinned video · hero thumbnail" aspect="16 / 9" tone="blue" />
               )}
-              <button className="play-btn-lg" onClick={() => setPlaying(VIDEOS[0])}>
+              <button className="play-btn-lg" onClick={() => setPlaying(allVideos[0])}>
                 <span>▶</span>
               </button>
               <div className="video-feature-meta">
-                <Tag tone="pink">Pinned</Tag>
-                <h2>{VIDEOS[0].title}</h2>
-                <div className="video-meta">{VIDEOS[0].days}d ago · <a href={`https://youtu.be/${VIDEOS[0].ytId}`} target="_blank" rel="noopener">watch on YouTube ↗</a></div>
+                <Tag tone="pink">Latest</Tag>
+                <h2>{allVideos[0].title}</h2>
+                <div className="video-meta">{allVideos[0].days}d ago · <a href={`https://youtu.be/${allVideos[0].ytId}`} target="_blank" rel="noopener">watch on YouTube ↗</a></div>
               </div>
             </React.Fragment>
           )}
