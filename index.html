@@ -323,9 +323,6 @@ main { flex: 1; }
 .post-title { line-height: 1.2; }
 .post-excerpt { color: var(--ink-soft); font-size: 15px; flex: 1; }
 .post-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; }
-.heart { font-size: 18px; color: var(--brown-soft); transition: color .2s, transform .2s; }
-.heart.lit { color: var(--pink-deep); transform: scale(1.15); }
-
 .post-featured { display: grid; grid-template-columns: 1fr; }
 @media (min-width: 760px) {
   .post-featured { grid-template-columns: 1.1fr 1fr; }
@@ -1605,17 +1602,11 @@ const PostCard = ({ post, likes, onLike, featured, onRead, onDelete, admin }) =>
       </div>
       <h3 className="post-title" onClick={() => onRead && onRead(post)} style={{ cursor: "pointer" }}>{post.title}</h3>
       <p className="post-excerpt">{post.excerpt}</p>
-      <div className="post-actions">
-        <button className="btn btn-ghost" onClick={() => onLike(post.id)}>
-          <span className={`heart ${likes[post.id] ? "lit" : ""}`}>♥</span>
-          <span>{(likes[post.id] || 0) + ((typeof post.id === "number" ? post.id : 1) * 7 + 23)}</span>
-        </button>
-        <div style={{ display: "flex", gap: 8 }}>
-          {admin && (
-            <button className="btn btn-ghost" onClick={() => onDelete(post.id)} title="Delete this post">🗑</button>
-          )}
-          <button className="btn btn-pink" onClick={() => onRead && onRead(post)}>Read post →</button>
-        </div>
+      <div className="post-actions" style={{ justifyContent: "flex-end" }}>
+        {admin && (
+          <button className="btn btn-ghost" onClick={() => onDelete(post.id)} title="Delete this post">🗑</button>
+        )}
+        <button className="btn btn-pink" onClick={() => onRead && onRead(post)}>Read post →</button>
       </div>
     </div>
   </article>
@@ -1660,10 +1651,6 @@ const PostDetail = ({ post, onClose, likes, onLike }) => {
             {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
           </div>
           <div className="modal-footer">
-            <button className="btn btn-pink" onClick={() => onLike(post.id)}>
-              <span className={`heart ${likes[post.id] ? "lit" : ""}`}>♥</span>
-              <span>{(likes[post.id] || 0) + ((typeof post.id === "number" ? post.id : 1) * 7 + 23)} loves</span>
-            </button>
             <button className="btn btn-outline" onClick={onClose}>← back to the barn</button>
           </div>
         </div>
