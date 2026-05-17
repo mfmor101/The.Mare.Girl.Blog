@@ -1675,7 +1675,7 @@ const NoteForm = ({ postTitle }) => {
       };
       // Formspree honors _replyto: hitting Reply in Gmail goes straight to the visitor
       if (trimmedEmail) payload._replyto = trimmedEmail;
-      const res = await fetch("https://formspree.io/f/mjgllpab", {
+      const res = await fetch("https://formspree.io/f/mredznbz", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload),
@@ -2455,7 +2455,7 @@ const Newsletter = () => {
     if (!ok) { setState("err"); return; }
     setState("sending");
     try {
-      const res = await fetch("https://formspree.io/f/mjgllpab", {
+      const res = await fetch("https://formspree.io/f/mredznbz", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ email: email.trim(), source: "Mare Girl Blog newsletter" }),
