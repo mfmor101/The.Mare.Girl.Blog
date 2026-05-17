@@ -904,6 +904,41 @@ main { flex: 1; }
   .news-inner { grid-template-columns: 1.3fr 1fr; gap: 40px; }
 }
 
+/* ============ LEAVE-A-NOTE (post comments) ============ */
+.note-form {
+  margin-top: 18px;
+  padding: 22px;
+  background: var(--cream-2);
+  border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.note-form-head { margin-bottom: 4px; }
+.note-form-hint { color: var(--ink-soft); font-size: 14px; }
+.note-form input,
+.note-form textarea {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  border: 2px solid rgba(122, 74, 51, 0.12);
+  outline: 0;
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
+}
+.note-form input:focus,
+.note-form textarea:focus { border-color: var(--pink-3); }
+.note-form-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.note-ok {
+  margin-top: 18px;
+  padding: 18px 22px;
+  background: var(--pink-2);
+  color: var(--brown-deep);
+  border-radius: var(--radius-sm);
+  font-family: 'Caveat', cursive;
+  font-size: 22px;
+  text-align: center;
+}
+
 /* ============ FOOTER ============ */
 .ftr {
   background: var(--brown-deep);
@@ -1613,6 +1648,69 @@ const PostCard = ({ post, likes, onLike, featured, onRead, onDelete, admin }) =>
   );
 };
 
+// ===================== LEAVE-A-NOTE (per-post comment via Formspree) =====================
+
+const NoteForm = ({ postTitle }) => {
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  const [state, setState] = useState("idle"); // idle | sending | ok | err
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!note.trim()) { setState("err"); return; }
+    setState("sending");
+    try {
+      const res = await fetch("https://formspree.io/f/mjgllpab", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          source: "Mare Girl Blog · comment",
+          post: postTitle,
+          name: name.trim() || "(anonymous)",
+          note: note.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("formspree");
+      setState("ok");
+      setName("");
+      setNote("");
+    } catch {
+      setState("err");
+    }
+  };
+
+  if (state === "ok") {
+    return <div className="note-ok">✿ thanks for the note — I'll read it soon</div>;
+  }
+
+  return (
+    <form className="note-form" onSubmit={submit}>
+      <div className="note-form-head">
+        <div className="hero-eyebrow">leave a note ✿</div>
+        <div className="note-form-hint">Goes straight to my inbox — I read every one. No signup, no spam.</div>
+      </div>
+      <input
+        type="text"
+        placeholder="your name (or just leave it blank)"
+        value={name}
+        onChange={e => { setName(e.target.value); if (state === "err") setState("idle"); }}
+      />
+      <textarea
+        rows={3}
+        placeholder="say something nice, ask a question, anything ✿"
+        value={note}
+        onChange={e => { setNote(e.target.value); if (state === "err") setState("idle"); }}
+      />
+      <div className="note-form-actions">
+        <button className="btn btn-pink" type="submit" disabled={state === "sending"}>
+          {state === "sending" ? "sending…" : "Send note →"}
+        </button>
+        {state === "err" && <span className="news-msg err">write a note first (or the send failed — try again)</span>}
+      </div>
+    </form>
+  );
+};
+
 // ===================== POST DETAIL MODAL =====================
 
 const PostDetail = ({ post, onClose, likes, onLike }) => {
@@ -1650,6 +1748,7 @@ const PostDetail = ({ post, onClose, likes, onLike }) => {
           <div className="modal-content">
             {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
           </div>
+          <NoteForm postTitle={post.title} />
           <div className="modal-footer">
             <button className="btn btn-outline" onClick={onClose}>← back to the barn</button>
           </div>
@@ -1884,6 +1983,9 @@ const Home = ({ onNav, likes, onLike, posts, onRead, images, setImages, admin })
           </div>
         </div>
       </section>
+
+      {/* Newsletter signup */}
+      <Newsletter />
     </div>
   );
 };
