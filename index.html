@@ -1422,7 +1422,7 @@ const UPDATES = [
     version: "Channel update — May, 2026",
     tone: "channel",
     items: [
-      "We hit 28 subs!! Thank you. Genuinely.",
+      { auto: "subs" }, // renders live sub count — not editable, always reflects YouTube
       "New long-form video every week, with Shorts dropping in between — follow @MareGirl_sehr so you don't miss them.",
       "Working on becoming a Vtuber. First episode in about a week!",
     ],
@@ -2235,36 +2235,43 @@ const Names = () => {
 
 // ===================== UPDATES =====================
 
-const Updates = () => (
-  <div className="page">
-    <section className="page-head">
-      <E id="updates.eyebrow" tag="div" className="hero-eyebrow">the changelog</E>
-      <E id="updates.title" tag="h1" className="page-title">Updates & patch notes</E>
-      <E id="updates.lede" tag="p" className="page-lede" multiline>What's new in Star Equestrian, what's new on the channel, and tiny things I think you should know about.</E>
-    </section>
+const Updates = () => {
+  const yt = useYouTubeChannel();
+  const subCount = yt ? yt.subs : 28;
+  return (
+    <div className="page">
+      <section className="page-head">
+        <E id="updates.eyebrow" tag="div" className="hero-eyebrow">the changelog</E>
+        <E id="updates.title" tag="h1" className="page-title">Updates & patch notes</E>
+        <E id="updates.lede" tag="p" className="page-lede" multiline>What's new in Star Equestrian, what's new on the channel, and tiny things I think you should know about.</E>
+      </section>
 
-    <ol className="timeline">
-      {UPDATES.map((u, i) => (
-        <li key={i} className={`tl-item tl-${u.tone}`}>
-          <div className="tl-dot"><Horseshoe size={18} color="#fff" /></div>
-          <div className="tl-card">
-            <div className="tl-head">
-              <Tag tone={u.tone === "major" ? "pink" : u.tone === "channel" ? "brown" : "blue"}>
-                {u.tone === "major" ? "Major update" : u.tone === "channel" ? "Channel" : "Patch"}
-              </Tag>
-              <E id={`upd.${i}.ver`} tag="h3">{u.version}</E>
+      <ol className="timeline">
+        {UPDATES.map((u, i) => (
+          <li key={i} className={`tl-item tl-${u.tone}`}>
+            <div className="tl-dot"><Horseshoe size={18} color="#fff" /></div>
+            <div className="tl-card">
+              <div className="tl-head">
+                <Tag tone={u.tone === "major" ? "pink" : u.tone === "channel" ? "brown" : "blue"}>
+                  {u.tone === "major" ? "Major update" : u.tone === "channel" ? "Channel" : "Patch"}
+                </Tag>
+                <E id={`upd.${i}.ver`} tag="h3">{u.version}</E>
+              </div>
+              <ul className="tl-list">
+                {u.items.map((it, k) => {
+                  if (it && typeof it === "object" && it.auto === "subs") {
+                    return <li key={k}>We hit <strong>{subCount}</strong> subs!! Thank you. Genuinely.</li>;
+                  }
+                  return <li key={k}><E id={`upd.${i}.item.${k}`} tag="span" multiline>{it}</E></li>;
+                })}
+              </ul>
             </div>
-            <ul className="tl-list">
-              {u.items.map((it, k) => (
-                <li key={k}><E id={`upd.${i}.item.${k}`} tag="span" multiline>{it}</E></li>
-              ))}
-            </ul>
-          </div>
-        </li>
-      ))}
-    </ol>
-  </div>
-);
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+};
 
 // ===================== ABOUT =====================
 
