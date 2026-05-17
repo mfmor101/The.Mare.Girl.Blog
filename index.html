@@ -1652,27 +1652,38 @@ const PostCard = ({ post, likes, onLike, featured, onRead, onDelete, admin }) =>
 
 const NoteForm = ({ postTitle }) => {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
-  const [state, setState] = useState("idle"); // idle | sending | ok | err
+  const [state, setState] = useState("idle"); // idle | sending | ok | err | bademail
 
   const submit = async (e) => {
     e.preventDefault();
     if (!note.trim()) { setState("err"); return; }
+    // Email is optional, but if they typed one, make sure it's valid so replies actually work
+    const trimmedEmail = email.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setState("bademail");
+      return;
+    }
     setState("sending");
     try {
+      const payload = {
+        source: "Mare Girl Blog · comment",
+        post: postTitle,
+        name: name.trim() || "(anonymous)",
+        note: note.trim(),
+      };
+      // Formspree honors _replyto: hitting Reply in Gmail goes straight to the visitor
+      if (trimmedEmail) payload._replyto = trimmedEmail;
       const res = await fetch("https://formspree.io/f/mjgllpab", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          source: "Mare Girl Blog · comment",
-          post: postTitle,
-          name: name.trim() || "(anonymous)",
-          note: note.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("formspree");
       setState("ok");
       setName("");
+      setEmail("");
       setNote("");
     } catch {
       setState("err");
@@ -1693,19 +1704,27 @@ const NoteForm = ({ postTitle }) => {
         type="text"
         placeholder="your name (or just leave it blank)"
         value={name}
-        onChange={e => { setName(e.target.value); if (state === "err") setState("idle"); }}
+        onChange={e => { setName(e.target.value); if (state === "err" || state === "bademail") setState("idle"); }}
+      />
+      <input
+        type="email"
+        placeholder="your email (optional — only if you'd like a reply)"
+        value={email}
+        onChange={e => { setEmail(e.target.value); if (state === "err" || state === "bademail") setState("idle"); }}
+        aria-invalid={state === "bademail"}
       />
       <textarea
         rows={3}
         placeholder="say something nice, ask a question, anything ✿"
         value={note}
-        onChange={e => { setNote(e.target.value); if (state === "err") setState("idle"); }}
+        onChange={e => { setNote(e.target.value); if (state === "err" || state === "bademail") setState("idle"); }}
       />
       <div className="note-form-actions">
         <button className="btn btn-pink" type="submit" disabled={state === "sending"}>
           {state === "sending" ? "sending…" : "Send note →"}
         </button>
         {state === "err" && <span className="news-msg err">write a note first (or the send failed — try again)</span>}
+        {state === "bademail" && <span className="news-msg err">that email doesn't look right — fix it or leave it blank</span>}
       </div>
     </form>
   );
